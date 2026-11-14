@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniServ Co-op Treasury Ledger</title>
+  <!-- Vendored AG Grid Community (MIT License, v36.3.0) -->
+  <link rel="stylesheet" href="/vendor/ag-grid/ag-grid.min.css">
+  <link rel="stylesheet" href="/vendor/ag-grid/ag-theme-quartz.min.css">
+  <!-- Application Stylesheet -->
+  <link rel="stylesheet" href="/ledger.css">
+</head>
+<body>
+  <!-- Prototype Sandbox Top Banner -->
+  <div class="sandbox-banner">
+    Sandbox prototype ledger: PayPal sandbox amounts, not real money
+  </div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo-mark">U</div>
+        <div>
+          <h1 class="header-title">Co-op Treasury Ledger</h1>
+          <p class="header-subtitle">Real-time transparent disbursements, fair artisan wages &amp; welfare reserves</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="status-pill status-live" id="connPill">
+          <span class="status-dot"></span>
+          <span id="connStatusText">Connected (Sandbox)</span>
+        </div>
+        <div class="as-of-time" id="asOfTime">Data as of: --</div>
+        <button class="btn btn-secondary btn-sm" id="refreshBtn" title="Refresh ledger data">
+          ↻ Refresh
+        </button>
+      </div>
+    </header>
+
+    <!-- Fallback Notification (Only shown if AG Grid fails or offline) -->
+    <div class="fallback-notice" id="fallbackNotice" style="display: none;">
+      <span class="fallback-icon">⚠️</span>
+      <span>Standard Table Active (AG Grid Community unavailable; running in zero-dependency fallback mode)</span>
+    </div>
+
+    <!-- KPI Summary Grid -->
+    <section class="kpi-section" aria-label="Treasury Financial Summary">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Bookings</div>
+        <div class="kpi-value" id="kpiTotalBookings">0</div>
+        <div class="kpi-sub" id="kpiSettledCount">0 Settled</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Authorized Volume</div>
+        <div class="kpi-value" id="kpiTotalAuthorized">$0.00</div>
+        <div class="kpi-sub">Pre-authorized hold</div>
+      </div>
+      <div class="kpi-card highlight-card">
+        <div class="kpi-label">Captured Volume</div>
+        <div class="kpi-value" id="kpiTotalCaptured">$0.00</div>
+        <div class="kpi-sub">Confirmed captured USD</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Artisan Wages Paid</div>
+        <div class="kpi-value" id="kpiArtisanPaid">$0.00</div>
+        <div class="kpi-sub">Disbursed (80% wage)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Welfare Fund Paid</div>
+        <div class="kpi-value" id="kpiWelfarePaid">$0.00</div>
+        <div class="kpi-sub">Co-op welfare (10%)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Capital Reserve Paid</div>
+        <div class="kpi-value" id="kpiReservePaid">$0.00</div>
+        <div class="kpi-sub">Emergency reserve (6%)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Platform Retained</div>
+        <div class="kpi-value" id="kpiPlatformRetained">$0.00</div>
+        <div class="kpi-sub">Before PayPal fees (4%)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Pending / Unclaimed</div>
+        <div class="kpi-value" id="kpiPendingPayouts">$0.00</div>
+        <div class="kpi-sub" id="kpiUnclaimedSub">In-flight payout items</div>
+      </div>
+    </section>
+
+    <!-- Controls Bar -->
+    <section class="controls-card" aria-label="Ledger Controls and Filters">
+      <div class="controls-left">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" placeholder="Quick filter across all columns..." autocomplete="off">
+        </div>
+        <div class="select-group">
+          <label for="decisionFilter">Decision:</label>
+          <select id="decisionFilter">
+            <option value="ALL">All Decisions</option>
+            <option value="SETTLED">SETTLED</option>
+            <option value="HELD">HELD</option>
+            <option value="PENDING">PENDING</option>
+            <option value="FAILED">FAILED</option>
+            <option value="n/a">n/a</option>
+          </select>
+        </div>
+        <div class="select-group">
+          <label for="serviceFilter">Service:</label>
+          <select id="serviceFilter">
+            <option value="ALL">All Services</option>
+          </select>
+        </div>
+      </div>
+      <div class="controls-right">
+        <button class="btn btn-secondary" id="sortToggleBtn" style="display: none;">
+          Sort: Newest First
+        </button>
+        <button class="btn btn-primary" id="downloadCsvBtn">
+          ⤓ Download CSV
+        </button>
+      </div>
+    </section>
+
+    <!-- Grid / Table View Container -->
+    <section class="table-card" id="mainDisplayCard">
+      <!-- AG Grid Community Container -->
+      <div id="agGridContainer" class="ag-theme-quartz-dark" style="height: 520px; width: 100%;"></div>
+
+      <!-- Plain Table Fallback (Shown if AG Grid unavailable) -->
+      <div class="table-responsive" id="plainTableContainer" style="display: none;">
+        <table class="ledger-table" id="ledgerTable">
+          <thead>
+            <tr>
+              <th style="width: 36px;"></th>
+              <th>Booking</th>
+              <th>Created</th>
+              <th>Service</th>
+              <th>Payer</th>
+              <th>Data Mode</th>
+              <th>Agent Mode</th>
+              <th>Decision</th>
+              <th>PayPal Status</th>
+              <th class="num-col">Authorized</th>
+              <th class="num-col">Captured</th>
+              <th class="num-col">Artisan</th>
+              <th class="num-col">Welfare</th>
+              <th class="num-col">Reserve</th>
+              <th class="num-col">Platform</th>
+              <th>Fee</th>
+              <th>Flags</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Empty State -->
+      <div class="empty-state" id="emptyState" style="display: none;">
+        <div class="empty-icon">📋</div>
+        <div class="empty-title">No Transactions Recorded</div>
+        <p class="empty-desc">No bookings found matching your current filter criteria.</p>
+      </div>
+    </section>
+
+    <!-- Selected Record Detail & Audit Trace Panel -->
+    <section class="detail-panel-section" id="detailPanel" style="display: none;">
+      <div class="detail-panel-header">
+        <div class="detail-panel-title" id="detailPanelTitle">Booking Details &amp; Settlement Trace</div>
+        <button class="detail-close-btn" id="detailCloseBtn" title="Close details">✕</button>
+      </div>
+      <div id="detailPanelBody">
+        <!-- Rendered safely via textContent -->
+      </div>
+    </section>
+
+    <!-- Footer Note with AG Grid Attribution -->
+    <footer class="app-footer">
+      <p>UniServ Platform • Read-Only Co-op Treasury Ledger • Operating in PayPal Sandbox Mode</p>
+      <p class="ag-attribution">Powered by AG Grid Community</p>
+    </footer>
+  </div>
+
+  <!-- Load vendored AG Grid Community first, then ledger logic -->
+  <script src="/vendor/ag-grid/ag-grid-community.min.js"></script>
+  <script src="/ledger.js"></script>
+</body>
+</html>
